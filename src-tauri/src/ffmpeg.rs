@@ -152,6 +152,13 @@ pub fn capabilities(custom: Option<&str>) -> Result<Capabilities> {
             }
         })
         .collect();
+    let mut cmd = Command::new(&ffmpeg);
+    cmd.args(["-hide_banner", "-hwaccels"]);
+    hide_console(&mut cmd);
+    let hwaccels: Vec<String> = cmd
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().skip(1).map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+        .unwrap_or_default();
     let has = |n: &str| encoders.iter().any(|e| e == n);
     let pick = |names: &[&str]| names.iter().find(|n| has(n)).map(|s| s.to_string());
     Ok(Capabilities {
@@ -166,6 +173,7 @@ pub fn capabilities(custom: Option<&str>) -> Result<Capabilities> {
         has_svtav1: has("libsvtav1"),
         hw_h264: pick(&["h264_videotoolbox", "h264_nvenc", "h264_qsv", "h264_amf"]),
         hw_hevc: pick(&["hevc_videotoolbox", "hevc_nvenc", "hevc_qsv", "hevc_amf"]),
+        hwaccels,
         encoders,
     })
 }

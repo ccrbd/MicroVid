@@ -162,7 +162,7 @@ mod tests {
     fn info() -> MediaInfo {
         MediaInfo {
             path: "x".into(), size_bytes: 1_400_000_000, duration_secs: 3600.0, container: "mkv".into(), bitrate: None,
-            video: Some(VideoStream { index: 0, codec: "h264".into(), profile: None, width: 1920, height: 1080, fps: 24.0, sar: 1.0, pix_fmt: "yuv420p".into(), bit_depth: 8, bitrate: None, hdr: false }),
+            video: Some(VideoStream { index: 0, codec: "h264".into(), profile: None, width: 1920, height: 1080, fps: 24.0, sar: 1.0, pix_fmt: "yuv420p".into(), bit_depth: 8, bitrate: None, hdr: false, color_transfer: None, color_primaries: None, color_space: None }),
             audio: vec![AudioStream { index: 1, rel_index: 0, codec: "aac".into(), channels: 2, channel_layout: None, language: None, title: None, bitrate: None, is_default: true }],
             subtitles: vec![], chapters: 0,
         }

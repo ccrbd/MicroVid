@@ -79,7 +79,8 @@ pub async fn test_encode(state: Arc<AppState>, id: &str, start_secs: Option<f64>
     let start = start_secs.unwrap_or((dur / 2.0 - clip / 2.0).max(0.0)).clamp(0.0, (dur - clip).max(0.0));
     let out = state.cache_dir.join(format!("test-{}.{}", job.id, job.settings.container.ext()));
     let _ = std::fs::remove_file(&out);
-    let args = command::build_args(BuildInput { info: &info, settings: &job.settings, crop: job.crop, external_sub: None, output: &out, caps: &caps, clip: Some((start, clip)) })?;
+    let hw = if state.settings().hw_decode { caps.hw_decoder().map(|s| s.to_string()) } else { None };
+    let args = command::build_args(BuildInput { info: &info, settings: &job.settings, crop: job.crop, external_sub: None, output: &out, caps: &caps, clip: Some((start, clip)), hwaccel: hw.as_deref() })?;
     let run = run_clip(&caps.ffmpeg_path, &args).await?;
     let clip_size = std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
     let (w, h) = command::output_dims(&info, &job.settings, job.crop);
@@ -126,7 +127,8 @@ pub async fn benchmark(state: Arc<AppState>, id: &str, max_jobs: u32) -> Result<
         let mut handles = vec![];
         for k in 0..n {
             let out: PathBuf = state.cache_dir.join(format!("bench-{k}.{}", job.settings.container.ext()));
-            let args = command::build_args(BuildInput { info: &info, settings: &job.settings, crop: job.crop, external_sub: None, output: &out, caps: &caps, clip: Some((start, clip)) })?;
+            let hw = if state.settings().hw_decode { caps.hw_decoder().map(|s| s.to_string()) } else { None };
+            let args = command::build_args(BuildInput { info: &info, settings: &job.settings, crop: job.crop, external_sub: None, output: &out, caps: &caps, clip: Some((start, clip)), hwaccel: hw.as_deref() })?;
             let p = caps.ffmpeg_path.clone();
             handles.push(tauri::async_runtime::spawn(async move { run_clip(&p, &args).await }));
         }

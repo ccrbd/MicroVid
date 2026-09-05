@@ -147,6 +147,7 @@ export default function SettingsView() {
           )}
           <div className="mb-2 text-[11.5px]" style={{ color: "var(--mv-faint)" }}>At 360p/480p one ffmpeg process cannot use all your cores, so two or three jobs at once finish a season sooner. The status bar shows total throughput.</div>
           <Check label="Prevent sleep while encoding" checked={d.prevent_sleep} onChange={(v) => set({ prevent_sleep: v })} />
+          <Check label="Hardware decoding" hint={`Decodes the source on the GPU (${caps?.hwaccels?.length ? caps.hwaccels.join(", ") : "none detected"}), a big speed-up for 4K sources. Encoding stays in software for quality.`} checked={d.hw_decode} onChange={(v) => set({ hw_decode: v })} />
         </Section>
 
         <Section title="Behaviour">

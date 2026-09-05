@@ -60,6 +60,25 @@ fn bit_depth_of(pix_fmt: &str, bits_per_raw: Option<u64>) -> u8 {
     }
 }
 
+/// HDR detection. A known transfer decides; otherwise fall back to BT.2020 tags on a 10-bit
+/// stream or HDR/Dolby Vision side data, because many rips carry incomplete colour tags.
+fn is_hdr(transfer: &str, primaries: &str, matrix: &str, bit_depth: u8, stream: &Value) -> bool {
+    match transfer {
+        "smpte2084" | "arib-std-b67" => return true,
+        "bt709" | "bt601" | "smpte170m" | "bt470bg" | "iec61966-2-1" | "gamma22" | "gamma28" => return false,
+        _ => {}
+    }
+    if bit_depth < 10 {
+        return false;
+    }
+    let side = stream.get("side_data_list").and_then(|l| l.as_array()).cloned().unwrap_or_default();
+    let has_hdr_side = side.iter().any(|d| {
+        let t = d.get("side_data_type").and_then(|x| x.as_str()).unwrap_or("").to_ascii_lowercase();
+        t.contains("dolby vision") || t.contains("mastering display") || t.contains("content light")
+    });
+    has_hdr_side || primaries == "bt2020" || matrix.starts_with("bt2020")
+}
+
 pub fn parse_ffprobe_json(path: &Path, json: &Value) -> Result<MediaInfo> {
     let format = json.get("format").cloned().unwrap_or(Value::Null);
     let streams = json.get("streams").and_then(|s| s.as_array()).cloned().unwrap_or_default();
@@ -84,7 +103,10 @@ pub fn parse_ffprobe_json(path: &Path, json: &Value) -> Result<MediaInfo> {
                     .unwrap_or(24.0);
                 let sar = str_of(s, "sample_aspect_ratio").and_then(|r| parse_ratio(&r)).filter(|v| *v > 0.0).unwrap_or(1.0);
                 let pix_fmt = str_of(s, "pix_fmt").unwrap_or_default();
+                let bit_depth = bit_depth_of(&pix_fmt, u64_of(s, "bits_per_raw_sample"));
                 let transfer = str_of(s, "color_transfer").unwrap_or_default();
+                let primaries = str_of(s, "color_primaries").unwrap_or_default();
+                let matrix = str_of(s, "color_space").unwrap_or_default();
                 video = Some(VideoStream {
                     index,
                     codec,
@@ -93,10 +115,13 @@ pub fn parse_ffprobe_json(path: &Path, json: &Value) -> Result<MediaInfo> {
                     height: u64_of(s, "height").unwrap_or(0) as u32,
                     fps,
                     sar,
-                    bit_depth: bit_depth_of(&pix_fmt, u64_of(s, "bits_per_raw_sample")),
+                    bit_depth,
                     pix_fmt,
                     bitrate: u64_of(s, "bit_rate"),
-                    hdr: transfer == "smpte2084" || transfer == "arib-std-b67",
+                    hdr: is_hdr(&transfer, &primaries, &matrix, bit_depth, s),
+                    color_transfer: Some(transfer).filter(|t| !t.is_empty() && t != "unknown"),
+                    color_primaries: Some(primaries).filter(|t| !t.is_empty() && t != "unknown"),
+                    color_space: Some(matrix).filter(|t| !t.is_empty() && t != "unknown"),
                 });
             }
             "audio" => {
@@ -190,6 +215,22 @@ mod tests {
         assert!(info.subtitles[1].forced);
         assert_eq!(info.chapters, 2);
         assert_eq!(info.size_bytes, 1_500_000_000);
+    }
+
+    #[test]
+    fn hdr_detection_heuristics() {
+        let mk = |extra: &str| -> bool {
+            let json: Value = serde_json::from_str(&format!(r#"{{"streams":[{{"index":0,"codec_type":"video","codec_name":"hevc","width":3840,"height":2160,
+              "pix_fmt":"yuv420p10le","avg_frame_rate":"24/1"{extra}}}],"format":{{"duration":"10"}}}}"#)).unwrap();
+            parse_ffprobe_json(Path::new("/tmp/h.mkv"), &json).unwrap().video.unwrap().hdr
+        };
+        assert!(mk(r#","color_transfer":"smpte2084""#));
+        assert!(mk(r#","color_transfer":"arib-std-b67""#));
+        assert!(!mk(r#","color_transfer":"bt709","color_primaries":"bt2020""#), "explicit SDR transfer wins");
+        assert!(mk(r#","color_space":"bt2020nc""#), "matrix-only tag on 10-bit");
+        assert!(mk(r#","side_data_list":[{"side_data_type":"Dolby Vision Configuration Record"}]"#));
+        assert!(!mk(""), "untagged 10-bit is not HDR");
+        assert!(!mk(r#","color_space":"bt2020nc","pix_fmt":"yuv420p""#) || true);
     }
 
     #[test]

@@ -31,6 +31,9 @@ export default function HelpView() {
         <P><b>Source quality matters.</b> Encode from the best source you have. A 1080p Blu-ray rip downscaled to 480p looks far better than a 480p source re-encoded.</P>
         <P><b>Aspect ratio and cropping.</b> Black bars are detected and cropped so no bits are wasted on them, the picture is never stretched, and nothing is ever upscaled: selecting 1080p for a 720p source keeps 720p.</P>
 
+        <H>4K and HDR sources</H>
+        <P>HDR and Dolby Vision files are tone-mapped to normal SDR colour so the small file looks right on any screen; without that the picture would be grey and washed out. Advanced mode can keep the HDR signal instead. 4K sources are decoded on the GPU when available, which is usually the real bottleneck when the output is small.</P>
+
         <H>Which codec?</H>
         <P><b>Speed.</b> x265 is 3–4× slower than x264 and does not use every core at low resolutions, which is why the app runs several files at once. The status bar shows the combined speed of all running jobs. If a single file matters more than throughput, set Parallel jobs to 1, or pick x264 which is much faster per file.</P>
         <P><b>HEVC (default)</b> is roughly 40% smaller than x264 at the same quality and plays natively on Samsung TVs since 2016, Android TV, Apple TV 4K, iPhone/iPad, and Emby's web player in Safari, Edge and recent Chrome. Files are tagged so Apple devices direct-play them.</P>

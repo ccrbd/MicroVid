@@ -26,8 +26,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
-            let cache_dir = app.path().app_cache_dir()?;
+            // MICROVID_DATA_DIR: keep a dev instance's database and cache apart from the installed app's.
+            let (data_dir, cache_dir) = match std::env::var("MICROVID_DATA_DIR") {
+                Ok(d) => (std::path::PathBuf::from(&d), std::path::PathBuf::from(&d).join("cache")),
+                Err(_) => (app.path().app_data_dir()?, app.path().app_cache_dir()?),
+            };
             std::fs::create_dir_all(&data_dir)?;
             std::fs::create_dir_all(&cache_dir)?;
             let db = db::Db::open(&data_dir.join("microvid.db"))?;

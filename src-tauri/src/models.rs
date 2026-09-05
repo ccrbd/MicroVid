@@ -224,6 +224,8 @@ pub struct EncodeSettings {
     pub crop: CropMode,
     pub subtitles: SubtitleSettings,
     pub container: Container,
+    /// Convert HDR (PQ / HLG) sources to SDR with a tone-map so the picture is not washed out.
+    pub tonemap_hdr: bool,
     pub extra_args: Vec<String>,
 }
 
@@ -242,6 +244,7 @@ impl Default for EncodeSettings {
             crop: CropMode::Auto,
             subtitles: SubtitleSettings::default(),
             container: Container::Mkv,
+            tonemap_hdr: true,
             extra_args: vec![],
         }
     }
@@ -281,6 +284,13 @@ pub struct VideoStream {
     pub bit_depth: u8,
     pub bitrate: Option<u64>,
     pub hdr: bool,
+    /// ffprobe colour tags (may be "unknown"): used to drive the HDR tone-map.
+    #[serde(default)]
+    pub color_transfer: Option<String>,
+    #[serde(default)]
+    pub color_primaries: Option<String>,
+    #[serde(default)]
+    pub color_space: Option<String>,
 }
 
 impl VideoStream {
@@ -508,6 +518,8 @@ pub struct AppSettings {
     pub recursive: bool,
     pub parallel_jobs: u32,
     pub prevent_sleep: bool,
+    /// Decode the source with the GPU (VideoToolbox / D3D11) when available.
+    pub hw_decode: bool,
     /// "ask" | "always" | "never"
     pub auto_resume: String,
     pub skip_existing: bool,
@@ -534,6 +546,7 @@ impl Default for AppSettings {
             recursive: true,
             parallel_jobs: 0, // 0 = use machine suggestion
             prevent_sleep: true,
+            hw_decode: true,
             auto_resume: "ask".into(),
             skip_existing: true,
             auto_start_new: false,
@@ -567,9 +580,16 @@ pub struct Capabilities {
     pub has_svtav1: bool,
     pub hw_h264: Option<String>,
     pub hw_hevc: Option<String>,
+    /// Hardware decoders reported by `ffmpeg -hwaccels`.
+    pub hwaccels: Vec<String>,
 }
 
 impl Capabilities {
+    /// Preferred hardware decoder for this platform, if the build has it.
+    pub fn hw_decoder(&self) -> Option<&str> {
+        ["videotoolbox", "d3d11va", "dxva2", "vaapi"].into_iter().find(|h| self.hwaccels.iter().any(|x| x == h))
+    }
+
     pub fn audio_encoder(&self) -> &'static str {
         if self.has_aac_at {
             "aac_at"

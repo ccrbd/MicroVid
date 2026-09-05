@@ -43,6 +43,7 @@ export interface EncodeSettings {
   crop: CropMode;
   subtitles: SubtitleSettings;
   container: Container;
+  tonemap_hdr: boolean;
   extra_args: string[];
 }
 
@@ -59,6 +60,7 @@ export const defaultEncodeSettings = (): EncodeSettings => ({
   crop: { mode: "auto" },
   subtitles: { mode: "auto", file: null, delay_ms: 0, burn_in: false, keep_source_subs: true, source_tracks: null, default_track: null, language: "eng" },
   container: "mkv",
+  tonemap_hdr: true,
   extra_args: [],
 });
 
@@ -74,6 +76,9 @@ export interface VideoStream {
   bit_depth: number;
   bitrate: number | null;
   hdr: boolean;
+  color_transfer: string | null;
+  color_primaries: string | null;
+  color_space: string | null;
 }
 export interface AudioStream {
   index: number;
@@ -166,6 +171,7 @@ export interface AppSettings {
   recursive: boolean;
   parallel_jobs: number;
   prevent_sleep: boolean;
+  hw_decode: boolean;
   auto_resume: "ask" | "always" | "never";
   skip_existing: boolean;
   auto_start_new: boolean;
@@ -192,6 +198,7 @@ export interface Capabilities {
   has_svtav1: boolean;
   hw_h264: string | null;
   hw_hevc: string | null;
+  hwaccels: string[];
 }
 export interface MachineInfo {
   physical_cores: number;

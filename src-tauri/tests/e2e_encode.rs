@@ -35,7 +35,7 @@ fn encodes_sample_with_subs_crop_and_downmix() {
     std::fs::create_dir_all(&out_dir).unwrap();
     let out = out_dir.join("out.mkv.part");
     let args = microvid_lib::command::build_args(microvid_lib::command::BuildInput {
-        info: &info, settings: &settings, crop: Some(crop), external_sub: Some(&sub), output: &out, caps: &caps, clip: None,
+        info: &info, settings: &settings, crop: Some(crop), external_sub: Some(&sub), output: &out, caps: &caps, clip: None, hwaccel: caps.hw_decoder(),
     }).unwrap();
     let status = Command::new(&caps.ffmpeg_path).args(&args).status().unwrap();
     assert!(status.success(), "ffmpeg failed: {args:?}");

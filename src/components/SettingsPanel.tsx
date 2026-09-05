@@ -238,6 +238,13 @@ export default function SettingsPanel({ value: v, onChange, advanced, job, caps,
             </div>
           </div>
           <div className="mv-row">
+            <label>HDR sources</label>
+            <select className="mv-select" value={v.tonemap_hdr ? "tonemap" : "keep"} disabled={disabled} onChange={(e) => set({ tonemap_hdr: e.target.value === "tonemap" })}>
+              <option value="tonemap">Tone-map to SDR (recommended for TVs and small files)</option>
+              <option value="keep">Keep HDR signal (needs 10-bit and an HDR display)</option>
+            </select>
+          </div>
+          <div className="mv-row">
             <label>Container</label>
             <select className="mv-select" value={v.container} disabled={disabled} onChange={(e) => set({ container: e.target.value as "mkv" | "mp4" })}>
               <option value="mkv">MKV (recommended, keeps every subtitle type)</option>

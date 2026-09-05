@@ -351,6 +351,7 @@ async fn run_job_inner(state: &Arc<AppState>, id: &str) -> Result<JobStatus> {
         output: &part,
         caps: &caps,
         clip: None,
+        hwaccel: if settings.hw_decode { caps.hw_decoder() } else { None },
     })?;
 
     let (cancel, cancelled) = {
@@ -398,6 +399,8 @@ async fn run_job_inner(state: &Arc<AppState>, id: &str) -> Result<JobStatus> {
     let mut lines = BufReader::new(stdout).lines();
     let mut acc = ProgressLine::default();
     let duration = info.duration_secs.max(0.001);
+    let src_fps = info.video.as_ref().map(|v| v.fps).filter(|f| *f > 0.0).unwrap_or(24.0);
+    let total_frames = duration * src_fps;
     let mut last_frame = 0u64;
     let mut was_cancelled = false;
     loop {
@@ -411,16 +414,19 @@ async fn run_job_inner(state: &Arc<AppState>, id: &str) -> Result<JobStatus> {
                 match line {
                     Ok(Some(l)) => {
                         if let Some(block) = ffmpeg::parse_progress_line(&mut acc, &l) {
-                            let out_t = block.out_time_secs.unwrap_or(0.0).max(0.0);
-                            let speed = block.speed.unwrap_or(0.0);
+                            // ffmpeg's out_time/speed follow the furthest muxed packet, which runs far
+                            // ahead of the video when subtitles are stream-copied. Frames are reliable.
                             last_frame = block.frame.unwrap_or(last_frame);
-                            let percent = (out_t / duration * 100.0).clamp(0.0, 100.0);
-                            let eta = if speed > 0.05 { Some(((duration - out_t) / speed).max(0.0)) } else { None };
+                            let enc_fps = block.fps.unwrap_or(0.0);
+                            let out_t = (last_frame as f64 / src_fps).min(duration);
+                            let speed = if enc_fps > 0.0 { enc_fps / src_fps } else { block.speed.unwrap_or(0.0) };
+                            let percent = (last_frame as f64 / total_frames.max(1.0) * 100.0).clamp(0.0, 100.0);
+                            let eta = if enc_fps > 0.5 { Some(((total_frames - last_frame as f64) / enc_fps).max(0.0)) } else { None };
                             let snapshot = state.with_job(id, |j| {
                                 j.progress = Progress {
                                     percent,
                                     frame: last_frame,
-                                    fps: block.fps.unwrap_or(0.0),
+                                    fps: enc_fps,
                                     speed,
                                     out_time_secs: out_t,
                                     out_size_bytes: block.total_size.unwrap_or(0),

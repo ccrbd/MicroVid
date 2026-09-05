@@ -14,6 +14,28 @@ pub struct BuildInput<'a> {
     pub caps: &'a Capabilities,
     /// (start_secs, duration_secs) for test encodes.
     pub clip: Option<(f64, f64)>,
+    /// Hardware decoder name (`-hwaccel`), e.g. "videotoolbox"; None = software decoding.
+    pub hwaccel: Option<&'a str>,
+}
+
+/// zscale + tonemap chain converting PQ/HLG BT.2020 to SDR BT.709. Input characteristics are
+/// passed explicitly because many HDR/DV rips carry no colour tags.
+pub fn tonemap_chain(v: &crate::models::VideoStream) -> String {
+    let tin = match v.color_transfer.as_deref() {
+        Some("arib-std-b67") => "arib-std-b67",
+        _ => "smpte2084",
+    };
+    let pin = match v.color_primaries.as_deref() {
+        Some(p) if p != "bt2020" && p != "unknown" => p,
+        _ => "bt2020",
+    };
+    let min = match v.color_space.as_deref() {
+        Some("bt2020c") => "bt2020c",
+        _ => "bt2020nc",
+    };
+    // setparams stamps the tags onto every frame (zscale refuses frames with unknown colour
+    // properties even when tin/pin/min are given), then zscale converts explicitly.
+    format!("format=yuv420p10le,setparams=colorspace={min}:color_primaries={pin}:color_trc={tin}:range=tv,zscale=tin={tin}:pin={pin}:min={min}:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv")
 }
 
 fn even(n: u32) -> u32 {
@@ -119,7 +141,7 @@ fn sub_codec_for_ext(ext: &str, container: Container) -> &'static str {
 }
 
 pub fn build_args(input: BuildInput) -> Result<Vec<String>> {
-    let BuildInput { info, settings, crop, external_sub, output, caps, clip } = input;
+    let BuildInput { info, settings, crop, external_sub, output, caps, clip, hwaccel } = input;
     let v = info.video.as_ref().ok_or_else(|| anyhow!("source has no video stream"))?;
     let s = settings;
     let mut a: Vec<String> = vec![];
@@ -128,6 +150,11 @@ pub fn build_args(input: BuildInput) -> Result<Vec<String>> {
     push(&mut a, &["-y", "-hide_banner", "-nostdin", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-stats_period", "0.5"]);
 
     // ---- inputs ----
+    if let Some(hw) = hwaccel {
+        // Frames are downloaded to system memory automatically, so software filters still apply;
+        // ffmpeg falls back to software decoding if the hardware path fails.
+        a.extend(["-hwaccel".into(), hw.into()]);
+    }
     if let Some((start, dur)) = clip {
         a.extend(["-ss".into(), format!("{start:.3}"), "-t".into(), format!("{dur:.3}")]);
     }
@@ -213,6 +240,11 @@ pub fn build_args(input: BuildInput) -> Result<Vec<String>> {
         vf.push(format!("scale={out_w}:{out_h}:flags=lanczos"));
         vf.push("setsar=1".into());
     }
+    let tonemap = v.hdr && s.tonemap_hdr;
+    if tonemap {
+        // After scaling (cheaper), before subtitles (so text is rendered in SDR).
+        vf.push(tonemap_chain(v));
+    }
     if s.subtitles.burn_in && clip.is_none() {
         if let Some(sub) = external_sub {
             vf.push(format!("subtitles={}", escape_filter_path(&sub.to_string_lossy())));
@@ -220,15 +252,18 @@ pub fn build_args(input: BuildInput) -> Result<Vec<String>> {
             vf.push(format!("subtitles={}:si={}", escape_filter_path(&info.path), st.rel_index));
         }
     }
+    let crf = s.effective_crf();
+    let preset = s.effective_preset();
+    let ten_bit = s.ten_bit || s.codec == Codec::Av1;
+    let pix_fmt = if ten_bit { "yuv420p10le" } else { "yuv420p" };
+    if tonemap {
+        vf.push(format!("format={pix_fmt}"));
+    }
     if !vf.is_empty() {
         a.extend(["-vf".into(), vf.join(",")]);
     }
 
     // ---- video encoder ----
-    let crf = s.effective_crf();
-    let preset = s.effective_preset();
-    let ten_bit = s.ten_bit || s.codec == Codec::Av1;
-    let pix_fmt = if ten_bit { "yuv420p10le" } else { "yuv420p" };
     let hw = if s.hardware {
         match s.codec {
             Codec::X264 => caps.hw_h264.clone(),
@@ -353,7 +388,7 @@ mod tests {
             bitrate: None,
             video: Some(VideoStream {
                 index: 0, codec: "h264".into(), profile: None, width: w, height: h, fps: 23.976, sar,
-                pix_fmt: "yuv420p".into(), bit_depth: 8, bitrate: None, hdr: false,
+                pix_fmt: "yuv420p".into(), bit_depth: 8, bitrate: None, hdr: false, color_transfer: None, color_primaries: None, color_space: None,
             }),
             audio: vec![AudioStream {
                 index: 1, rel_index: 0, codec: "ac3".into(), channels: 6, channel_layout: Some("5.1(side)".into()),
@@ -370,11 +405,11 @@ mod tests {
         Capabilities {
             ffmpeg_path: "ffmpeg".into(), ffprobe_path: "ffprobe".into(), source: "bundled".into(), version: "9".into(),
             encoders: vec![], has_aac_at: true, has_fdk_aac: false, has_x264: true, has_x265: true, has_svtav1: true,
-            hw_h264: Some("h264_videotoolbox".into()), hw_hevc: Some("hevc_videotoolbox".into()),
+            hw_h264: Some("h264_videotoolbox".into()), hw_hevc: Some("hevc_videotoolbox".into()), hwaccels: vec!["videotoolbox".into()],
         }
     }
     fn args(info: &MediaInfo, s: &EncodeSettings, crop: Option<Crop>, sub: Option<&Path>) -> Vec<String> {
-        build_args(BuildInput { info, settings: s, crop, external_sub: sub, output: Path::new("/out/x.mkv.part"), caps: &caps(), clip: None }).unwrap()
+        build_args(BuildInput { info, settings: s, crop, external_sub: sub, output: Path::new("/out/x.mkv.part"), caps: &caps(), clip: None, hwaccel: None }).unwrap()
     }
     fn has_pair(a: &[String], k: &str, v: &str) -> bool {
         a.windows(2).any(|w| w[0] == k && w[1] == v)
@@ -503,7 +538,7 @@ mod tests {
     fn clip_mode_skips_subs() {
         let i = info(1920, 1080, 1.0);
         let s = EncodeSettings::default();
-        let a = build_args(BuildInput { info: &i, settings: &s, crop: None, external_sub: Some(Path::new("/x.srt")), output: Path::new("/o.mkv"), caps: &caps(), clip: Some((1300.0, 30.0)) }).unwrap();
+        let a = build_args(BuildInput { info: &i, settings: &s, crop: None, external_sub: Some(Path::new("/x.srt")), output: Path::new("/o.mkv"), caps: &caps(), clip: Some((1300.0, 30.0)), hwaccel: None }).unwrap();
         assert!(has_pair(&a, "-ss", "1300.000"));
         assert!(has_pair(&a, "-t", "30.000"));
         assert!(!has_pair(&a, "-map", "1:0"));
@@ -539,6 +574,27 @@ mod tests {
         s3.audio.tracks = vec![9];
         let a3 = args(&i, &s3, None, None);
         assert!(has_pair(&a3, "-map", "0:a:0"));
+    }
+
+    #[test]
+    fn hdr_source_is_tonemapped_and_hw_decoded() {
+        let mut i = info(3840, 1608, 1.0);
+        let v = i.video.as_mut().unwrap();
+        v.hdr = true;
+        v.bit_depth = 10;
+        v.pix_fmt = "yuv420p10le".into();
+        let s = EncodeSettings::default();
+        let a = build_args(BuildInput { info: &i, settings: &s, crop: None, external_sub: None, output: Path::new("/o.mkv"), caps: &caps(), clip: None, hwaccel: Some("videotoolbox") }).unwrap();
+        assert_eq!(&a[a.iter().position(|x| x == "-hwaccel").unwrap() + 1], "videotoolbox");
+        assert!(a.iter().position(|x| x == "-hwaccel").unwrap() < a.iter().position(|x| x == "-i").unwrap());
+        let vf = a.iter().position(|x| x == "-vf").map(|p| a[p + 1].clone()).unwrap();
+        assert!(vf.starts_with("scale=1146:480:flags=lanczos,setsar=1,format=yuv420p10le,setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084:range=tv,zscale=tin=smpte2084:pin=bt2020:min=bt2020nc:t=linear"), "{vf}");
+        assert!(vf.contains("tonemap=tonemap=hable"));
+        assert!(vf.ends_with("format=yuv420p"), "{vf}");
+        let mut s2 = EncodeSettings::default();
+        s2.tonemap_hdr = false;
+        let a2 = args(&i, &s2, None, None);
+        assert!(!a2.iter().any(|x| x.contains("tonemap")));
     }
 
     #[test]
