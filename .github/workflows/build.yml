@@ -11,21 +11,6 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    name: Unit tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install Tauri Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
-
   build:
     name: ${{ matrix.name }}
     strategy:
@@ -42,11 +27,6 @@ jobs:
             triple: aarch64-apple-darwin
             artifact: MicroVid-macos-arm64
             args: "--target aarch64-apple-darwin"
-          - name: macOS Intel
-            os: macos-13
-            triple: x86_64-apple-darwin
-            artifact: MicroVid-macos-intel
-            args: "--target x86_64-apple-darwin"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +48,8 @@ jobs:
       - name: Fetch FFmpeg sidecars
         shell: bash
         run: ./scripts/fetch-ffmpeg.sh ${{ matrix.triple }}
+      - name: Unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:

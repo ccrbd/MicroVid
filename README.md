@@ -84,7 +84,7 @@ scripts/        fetch-ffmpeg.sh
 
 GitHub Actions builds installers on every push to `main` (see `.github/workflows/build.yml`):
 open the workflow run and download the `MicroVid-windows` (`.msi` and `.exe` installers) or
-`MicroVid-macos` (`.dmg`) artifact. Tagging a commit `v*` also publishes a GitHub Release with the same files.
+`MicroVid-macos-arm64` (`.dmg`, Apple Silicon) artifact. Tagging a commit `v*` also publishes a GitHub Release with the same files.
 
 ## Licence
 
