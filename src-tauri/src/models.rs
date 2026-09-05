@@ -111,19 +111,31 @@ pub enum Channels {
     Mono,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioMode {
+    /// The source's default track only.
+    Default,
+    All,
+    /// The tracks listed in `tracks`.
+    Select,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct AudioSettings {
     pub bitrate_kbps: u32,
     pub channels: Channels,
-    pub keep_all_tracks: bool,
-    /// Index among the source's audio streams (a:N). None = first/default track.
-    pub track: Option<usize>,
+    pub mode: AudioMode,
+    /// Audio stream indexes (a:N) to keep when mode is Select.
+    pub tracks: Vec<usize>,
+    /// Which kept track is flagged as default (a:N). None = the first kept track.
+    pub default_track: Option<usize>,
 }
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        Self { bitrate_kbps: 80, channels: Channels::Stereo, keep_all_tracks: false, track: None }
+        Self { bitrate_kbps: 80, channels: Channels::Stereo, mode: AudioMode::Default, tracks: vec![], default_track: None }
     }
 }
 
@@ -155,6 +167,10 @@ pub struct SubtitleSettings {
     pub delay_ms: i64,
     pub burn_in: bool,
     pub keep_source_subs: bool,
+    /// Source subtitle streams (s:N) to keep; None = all of them.
+    pub source_tracks: Option<Vec<usize>>,
+    /// Track flagged default: -1 = the external file, N = source stream s:N, None = auto.
+    pub default_track: Option<i64>,
     /// ISO 639-2 language tag applied to an external subtitle track.
     pub language: String,
 }
@@ -167,6 +183,8 @@ impl Default for SubtitleSettings {
             delay_ms: 0,
             burn_in: false,
             keep_source_subs: true,
+            source_tracks: None,
+            default_track: None,
             language: "eng".into(),
         }
     }
@@ -241,7 +259,7 @@ impl EncodeSettings {
         }
         match self.codec {
             Codec::X264 => "veryslow".into(),
-            Codec::Hevc => "slower".into(),
+            Codec::Hevc => "slow".into(),
             Codec::Av1 => "4".into(),
         }
     }
@@ -382,6 +400,8 @@ pub struct Job {
     pub output: String,
     pub settings: EncodeSettings,
     pub status: JobStatus,
+    /// Added while the queue was running: waits for the user to review settings and press Start.
+    pub held: bool,
     pub info: Option<MediaInfo>,
     pub crop: Option<Crop>,
     pub sub_candidates: Vec<SubCandidate>,
@@ -412,6 +432,7 @@ impl Default for Job {
             output: String::new(),
             settings: EncodeSettings::default(),
             status: JobStatus::Pending,
+            held: false,
             info: None,
             crop: None,
             sub_candidates: vec![],
@@ -490,6 +511,8 @@ pub struct AppSettings {
     /// "ask" | "always" | "never"
     pub auto_resume: String,
     pub skip_existing: bool,
+    /// Start files added while the queue is running without waiting for review.
+    pub auto_start_new: bool,
     pub notify_on_finish: bool,
     /// "none" | "notify" | "sleep" | "shutdown"
     pub post_queue_action: String,
@@ -513,6 +536,7 @@ impl Default for AppSettings {
             prevent_sleep: true,
             auto_resume: "ask".into(),
             skip_existing: true,
+            auto_start_new: false,
             notify_on_finish: true,
             post_queue_action: "notify".into(),
             ffmpeg_path: None,

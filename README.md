@@ -60,7 +60,7 @@ Windows builds from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds).
 | Action / sports | 22 | 24 | 32 |
 | News / talk | 28 | 30 | 40 |
 
-x264 uses `veryslow`, main profile; x265 uses `slower`, main profile, `hvc1` tag; SVT-AV1 uses preset 4,
+x264 uses `veryslow`, main profile; x265 uses `slow`, main profile, `hvc1` tag; SVT-AV1 uses preset 4,
 10-bit. Audio defaults to 80 kb/s stereo AAC. Everything is adjustable in Advanced mode.
 
 ## Layout
@@ -83,7 +83,7 @@ scripts/        fetch-ffmpeg.sh
 ## Windows and macOS installers
 
 GitHub Actions builds installers on every push to `main` (see `.github/workflows/build.yml`):
-open the workflow run and download the `MicroVid-windows` (`.msi` and `.exe` installers) or
+open the workflow run and download the `MicroVid-windows` (`-setup.exe` installer) or
 `MicroVid-macos-arm64` (`.dmg`, Apple Silicon) artifact. Tagging a commit `v*` also publishes a GitHub Release with the same files.
 
 ## Licence

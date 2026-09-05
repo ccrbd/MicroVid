@@ -177,14 +177,13 @@ impl AppState {
                 }
                 JobStatus::Pending | JobStatus::Probing | JobStatus::Interrupted => {
                     st.pending += 1;
-                    pending_secs += j.estimate.as_ref().map(|e| e.seconds).unwrap_or(0.0);
+                    if !j.held {
+                        pending_secs += j.estimate.as_ref().map(|e| e.seconds).unwrap_or(0.0);
+                    }
                 }
                 JobStatus::Failed => st.failed += 1,
                 _ => {}
             }
-        }
-        if st.running > 0 {
-            st.speed /= st.running as f64;
         }
         if st.running > 0 || st.pending > 0 {
             st.eta_secs = Some(remaining + pending_secs / parallel.max(1) as f64);

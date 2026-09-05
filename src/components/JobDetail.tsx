@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Copy, FileText, FlaskConical, FolderOpen, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Copy, FileText, FlaskConical, FolderOpen, Play, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { ipc } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { EncodeSettings, Job } from "../lib/types";
@@ -8,6 +8,7 @@ import { bytes, codecShort, duration, fileName, fps } from "../lib/format";
 import SettingsPanel, { defaultCrf } from "./SettingsPanel";
 import TestEncodeModal from "./TestEncodeModal";
 import OpenSubtitlesModal from "./OpenSubtitlesModal";
+import TrackPicker from "./TrackPicker";
 
 const PRESET_LABEL: Record<string, string> = { x264: "x264", hevc: "x265", av1: "SVT-AV1" };
 
@@ -71,7 +72,7 @@ export default function JobDetail() {
   const locked = job.status === "running";
   const pendingIds = jobs.filter((j) => j.id !== job.id && ["pending", "probing", "interrupted", "failed", "cancelled", "skipped"].includes(j.status)).map((j) => j.id);
   const crf = draft.crf ?? defaultCrf(draft);
-  const preset = draft.preset ?? { x264: "veryslow", hevc: "slower", av1: "preset 4" }[draft.codec];
+  const preset = draft.preset ?? { x264: "veryslow", hevc: "slow", av1: "preset 4" }[draft.codec];
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-3">
@@ -102,6 +103,7 @@ export default function JobDetail() {
       </div>
 
       <SettingsPanel value={draft} onChange={update} advanced={advanced} job={job} caps={caps} disabled={locked} onSearchSubs={() => setModal("subs")} />
+      {info && (info.audio.length > 1 || info.subtitles.length > 0) && <TrackPicker job={job} value={draft} onChange={update} disabled={locked} />}
 
       <div className="mv-row">
         <label>Output folder</label>
@@ -130,6 +132,12 @@ export default function JobDetail() {
       </div>
       {est?.note && <div className="mb-2 text-[11.5px]" style={{ color: "var(--mv-warn-text)" }}>{est.note}</div>}
 
+      {job.held && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-[12px]" style={{ background: "var(--mv-warn-soft)", color: "var(--mv-warn-text)" }}>
+          <span className="flex-1">Added while the queue was running. Check the settings, then start it.</span>
+          <button className="mv-btn primary" style={{ height: 26 }} onClick={() => ipc.releaseJobs([job.id])}><Play size={13} /> Start this file</button>
+        </div>
+      )}
       <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
         <button className="mv-btn" disabled={!info} onClick={() => setModal("test")} title="Encode 30 s from the middle to check size and quality">
           <FlaskConical size={14} /> Test encode

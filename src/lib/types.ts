@@ -9,11 +9,13 @@ export type JobStatus = "probing" | "pending" | "running" | "done" | "failed" | 
 
 export type CropMode = { mode: "auto" } | { mode: "none" } | { mode: "manual"; w: number; h: number; x: number; y: number };
 
+export type AudioMode = "default" | "all" | "select";
 export interface AudioSettings {
   bitrate_kbps: number;
   channels: Channels;
-  keep_all_tracks: boolean;
-  track: number | null;
+  mode: AudioMode;
+  tracks: number[];
+  default_track: number | null;
 }
 
 export interface SubtitleSettings {
@@ -22,6 +24,9 @@ export interface SubtitleSettings {
   delay_ms: number;
   burn_in: boolean;
   keep_source_subs: boolean;
+  source_tracks: number[] | null;
+  /** -1 = external file, N = source stream s:N, null = auto */
+  default_track: number | null;
   language: string;
 }
 
@@ -50,9 +55,9 @@ export const defaultEncodeSettings = (): EncodeSettings => ({
   ten_bit: false,
   tune: null,
   hardware: false,
-  audio: { bitrate_kbps: 80, channels: "stereo", keep_all_tracks: false, track: null },
+  audio: { bitrate_kbps: 80, channels: "stereo", mode: "default", tracks: [], default_track: null },
   crop: { mode: "auto" },
-  subtitles: { mode: "auto", file: null, delay_ms: 0, burn_in: false, keep_source_subs: true, language: "eng" },
+  subtitles: { mode: "auto", file: null, delay_ms: 0, burn_in: false, keep_source_subs: true, source_tracks: null, default_track: null, language: "eng" },
   container: "mkv",
   extra_args: [],
 });
@@ -132,6 +137,7 @@ export interface Job {
   output: string;
   settings: EncodeSettings;
   status: JobStatus;
+  held: boolean;
   info: MediaInfo | null;
   crop: Crop | null;
   sub_candidates: SubCandidate[];
@@ -162,6 +168,7 @@ export interface AppSettings {
   prevent_sleep: boolean;
   auto_resume: "ask" | "always" | "never";
   skip_existing: boolean;
+  auto_start_new: boolean;
   notify_on_finish: boolean;
   post_queue_action: "none" | "notify" | "sleep" | "shutdown";
   ffmpeg_path: string | null;

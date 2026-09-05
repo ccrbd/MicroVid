@@ -150,6 +150,7 @@ export default function SettingsView() {
         </Section>
 
         <Section title="Behaviour">
+          <Check label="Start files added while the queue is running right away" hint="Off: new files wait with a Review badge until you start them, so you can change their settings first." checked={d.auto_start_new} onChange={(v) => set({ auto_start_new: v })} />
           <Check label="Desktop notification when the queue finishes" checked={d.notify_on_finish} onChange={(v) => set({ notify_on_finish: v })} />
           <div className="mv-row">
             <label>When the queue ends</label>

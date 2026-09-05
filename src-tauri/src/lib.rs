@@ -72,6 +72,14 @@ pub fn run() {
                     let interrupted: Vec<String> = st.queue.lock().unwrap().jobs.iter().filter(|j| j.status == models::JobStatus::Interrupted).map(|j| j.id.clone()).collect();
                     queue::retry(&st, &interrupted);
                     queue::resume(&st);
+                    // MICROVID_AUTO_ADD2: add another path while the queue is running (exercises the review hold).
+                    if let Ok(more) = std::env::var("MICROVID_AUTO_ADD2") {
+                        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+                        let st3 = st.clone();
+                        let _ = st.app.run_on_main_thread(move || {
+                            queue::add_sources(&st3, &[more]);
+                        });
+                    }
                 });
             }
 
@@ -114,6 +122,7 @@ pub fn run() {
             commands::update_job_settings,
             commands::estimate_settings,
             commands::preview_output_name,
+            commands::release_jobs,
             commands::remove_jobs,
             commands::clear_finished,
             commands::retry_jobs,

@@ -13,7 +13,7 @@ const PRESETS: Record<string, string[]> = {
   hevc: ["veryslow", "slower", "slow", "medium", "fast", "faster", "veryfast"],
   av1: ["2", "3", "4", "5", "6", "7", "8", "10"],
 };
-const DEFAULT_PRESET: Record<string, string> = { x264: "veryslow", hevc: "slower", av1: "4" };
+const DEFAULT_PRESET: Record<string, string> = { x264: "veryslow", hevc: "slow", av1: "4" };
 const LANGS = [
   ["eng", "English"], ["spa", "Spanish"], ["fre", "French"], ["ger", "German"], ["ita", "Italian"], ["por", "Portuguese"], ["rus", "Russian"],
   ["jpn", "Japanese"], ["kor", "Korean"], ["chi", "Chinese"], ["ara", "Arabic"], ["hin", "Hindi"], ["ben", "Bengali"], ["tur", "Turkish"], ["dut", "Dutch"],
@@ -188,24 +188,10 @@ export default function SettingsPanel({ value: v, onChange, advanced, job, caps,
           </div>
           <div className="mv-row">
             <label>Audio tracks</label>
-            <select
-              className="mv-select"
-              value={v.audio.keep_all_tracks ? "all" : v.audio.track == null ? "default" : String(v.audio.track)}
-              disabled={disabled}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === "all") setAudio({ keep_all_tracks: true, track: null });
-                else if (val === "default") setAudio({ keep_all_tracks: false, track: null });
-                else setAudio({ keep_all_tracks: false, track: Number(val) });
-              }}
-            >
+            <select className="mv-select" value={v.audio.mode} disabled={disabled} onChange={(e) => setAudio({ mode: e.target.value as EncodeSettings["audio"]["mode"] })}>
               <option value="default">Default track only</option>
               <option value="all">Keep all tracks</option>
-              {info?.audio.map((a) => (
-                <option key={a.rel_index} value={a.rel_index}>
-                  #{a.rel_index + 1} {a.language ?? "und"} · {a.codec} {a.channel_layout ?? `${a.channels}ch`}{a.title ? ` · ${a.title}` : ""}
-                </option>
-              ))}
+              <option value="select">Chosen in the Tracks section</option>
             </select>
           </div>
           <div className="mv-row">

@@ -15,6 +15,7 @@ export const ipc = {
   updateJobSettings: (ids: string[], settings: EncodeSettings) => invoke<Job[]>("update_job_settings", { ids, settings }),
   estimateSettings: (id: string, settings: EncodeSettings) => invoke<Estimate>("estimate_settings", { id, settings }),
   previewOutputName: (naming: NamingSettings, settings: EncodeSettings) => invoke<string>("preview_output_name", { naming, settings }),
+  releaseJobs: (ids?: string[]) => invoke<void>("release_jobs", { ids: ids ?? null }),
   removeJobs: (ids: string[]) => invoke<void>("remove_jobs", { ids }),
   clearFinished: () => invoke<void>("clear_finished"),
   retryJobs: (ids: string[]) => invoke<void>("retry_jobs", { ids }),

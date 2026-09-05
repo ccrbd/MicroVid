@@ -63,7 +63,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
-          find src-tauri/target -path "*/bundle/*" \( -name "*.msi" -o -name "*-setup.exe" -o -name "*.dmg" \) -exec cp {} out/ \;
+          find src-tauri/target -path "*/bundle/*" \( -name "*-setup.exe" -o -name "*.dmg" \) -exec cp {} out/ \;
           ls -la out
       - uses: actions/upload-artifact@v4
         with:

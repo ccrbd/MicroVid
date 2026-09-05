@@ -43,6 +43,8 @@ pub fn add_sources(state: &Arc<AppState>, paths: &[String]) -> usize {
     let mut new_ids = vec![];
     {
         let mut q = state.queue.lock().unwrap();
+        // While the queue is running, new files wait for review unless the user opted out.
+        let hold = !q.paused && !settings.auto_start_new;
         for (src, root) in sources {
             let src_s = src.to_string_lossy().into_owned();
             if q.jobs.iter().any(|j| j.source == src_s && !j.status.is_finished()) {
@@ -55,6 +57,7 @@ pub fn add_sources(state: &Arc<AppState>, paths: &[String]) -> usize {
                 root: root.to_string_lossy().into_owned(),
                 settings: settings.defaults.clone(),
                 status: JobStatus::Probing,
+                held: hold,
                 created_at: now(),
                 in_size: std::fs::metadata(&src).map(|m| m.len()).unwrap_or(0),
                 order: q.next_order,
@@ -140,7 +143,7 @@ pub fn tick(state: &Arc<AppState>) {
             if running >= parallel {
                 break;
             }
-            if q.jobs[i].status == JobStatus::Pending && q.jobs[i].info.is_some() {
+            if q.jobs[i].status == JobStatus::Pending && !q.jobs[i].held && q.jobs[i].info.is_some() {
                 q.jobs[i].status = JobStatus::Running;
                 q.jobs[i].started_at = Some(now());
                 q.jobs[i].progress = Progress::default();
@@ -202,6 +205,22 @@ fn run_post_action(action: &str) {
     };
     crate::ffmpeg::hide_console(&mut cmd);
     let _ = cmd.spawn();
+}
+
+/// Let held jobs run: the given ids, or every held job when `ids` is None.
+pub fn release(state: &Arc<AppState>, ids: Option<&[String]>) {
+    {
+        let mut q = state.queue.lock().unwrap();
+        for j in q.jobs.iter_mut() {
+            if j.held && ids.map(|l| l.contains(&j.id)).unwrap_or(true) {
+                j.held = false;
+            }
+        }
+    }
+    let jobs = state.queue.lock().unwrap().jobs.clone();
+    let _ = state.db.upsert_jobs(&jobs);
+    state.emit_jobs();
+    tick(state);
 }
 
 pub fn pause(state: &Arc<AppState>) {

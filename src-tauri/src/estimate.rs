@@ -25,7 +25,7 @@ fn base_fps(codec: Codec, out_h: u32, hardware: bool) -> f64 {
     }
     let t: [(u32, f64); 5] = match codec {
         Codec::X264 => [(360, 120.0), (480, 80.0), (576, 65.0), (720, 45.0), (1080, 22.0)],
-        Codec::Hevc => [(360, 60.0), (480, 40.0), (576, 32.0), (720, 22.0), (1080, 10.0)],
+        Codec::Hevc => [(360, 90.0), (480, 60.0), (576, 48.0), (720, 33.0), (1080, 15.0)],
         Codec::Av1 => [(360, 45.0), (480, 30.0), (576, 24.0), (720, 16.0), (1080, 7.0)],
     };
     t.iter().find(|(h, _)| *h == bucket).map(|(_, k)| *k).unwrap_or(t[4].1)
@@ -60,15 +60,15 @@ pub fn preset_speed_factor(codec: Codec, preset: &str) -> f64 {
             _ => 1.0, // veryslow
         },
         Codec::Hevc => match preset {
-            "ultrafast" => 8.0,
-            "superfast" => 6.0,
-            "veryfast" => 4.5,
-            "faster" => 3.5,
-            "fast" => 3.0,
-            "medium" => 2.2,
-            "slow" => 1.5,
-            "veryslow" => 0.6,
-            _ => 1.0, // slower
+            "ultrafast" => 5.5,
+            "superfast" => 4.0,
+            "veryfast" => 3.0,
+            "faster" => 2.4,
+            "fast" => 2.0,
+            "medium" => 1.5,
+            "slower" => 0.65,
+            "veryslow" => 0.4,
+            _ => 1.0, // slow
         },
         Codec::Av1 => {
             let p: f64 = preset.parse().unwrap_or(4.0);
@@ -122,8 +122,8 @@ pub fn estimate(info: &MediaInfo, settings: &EncodeSettings, crop: Option<Crop>,
     if settings.ten_bit && settings.codec != Codec::Av1 {
         video_kbps *= 0.95;
     }
-    let audio_tracks = if settings.audio.keep_all_tracks { info.audio.len().max(1) } else { 1 } as f64;
-    let audio_kbps = if info.audio.is_empty() { 0.0 } else { settings.audio.bitrate_kbps as f64 * audio_tracks };
+    let audio_tracks = crate::command::select_audio(info, settings).len() as f64;
+    let audio_kbps = settings.audio.bitrate_kbps as f64 * audio_tracks;
     let size_bytes = ((video_kbps + audio_kbps) * 1000.0 / 8.0 * info.duration_secs) as u64;
 
     let frames = info.duration_secs * fps;

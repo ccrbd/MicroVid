@@ -105,7 +105,7 @@ pub fn update_job_settings(state: State<'_, Arc<AppState>>, ids: Vec<String>, se
     {
         let mut q = state.queue.lock().unwrap();
         for j in q.jobs.iter_mut().filter(|j| ids.contains(&j.id) && j.status != JobStatus::Running) {
-            j.settings = settings.clone();
+            j.settings = sanitize_tracks(settings.clone(), j.info.as_ref());
             changed.push(j.clone());
         }
     }
@@ -119,6 +119,36 @@ pub fn update_job_settings(state: State<'_, Arc<AppState>>, ids: Vec<String>, se
     }
     state.emit_jobs();
     Ok(changed)
+}
+
+/// Track selections are per file; when settings are copied to another file keep only indexes it has.
+fn sanitize_tracks(mut s: EncodeSettings, info: Option<&MediaInfo>) -> EncodeSettings {
+    let Some(info) = info else { return s };
+    let audio_ok = |i: &usize| info.audio.iter().any(|a| a.rel_index == *i);
+    s.audio.tracks.retain(audio_ok);
+    if s.audio.mode == AudioMode::Select && s.audio.tracks.is_empty() {
+        s.audio.mode = AudioMode::Default;
+    }
+    if let Some(d) = s.audio.default_track {
+        if !audio_ok(&d) {
+            s.audio.default_track = None;
+        }
+    }
+    if let Some(sel) = &mut s.subtitles.source_tracks {
+        sel.retain(|i| info.subtitles.iter().any(|t| t.rel_index == *i));
+    }
+    if let Some(d) = s.subtitles.default_track {
+        if d >= 0 && !info.subtitles.iter().any(|t| t.rel_index as i64 == d) {
+            s.subtitles.default_track = None;
+        }
+    }
+    s
+}
+
+#[tauri::command]
+pub fn release_jobs(state: State<'_, Arc<AppState>>, ids: Option<Vec<String>>) {
+    let st: &Arc<AppState> = &state;
+    queue::release(st, ids.as_deref());
 }
 
 #[tauri::command]
@@ -211,6 +241,8 @@ pub fn start_queue(state: State<'_, Arc<AppState>>) {
     if !ids.is_empty() {
         queue::retry(st, &ids);
     }
+    // Start means go: anything waiting for review runs too.
+    queue::release(st, None);
     queue::resume(st);
     state.emit_jobs();
 }

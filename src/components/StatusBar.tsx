@@ -23,7 +23,7 @@ export default function StatusBar() {
         <>
           <span><b style={{ color: "var(--mv-text)", fontWeight: 500 }}>Converting:</b> {stats.done + stats.running}/{stats.total} files</span>
           {sep}
-          <span><b style={{ color: "var(--mv-text)", fontWeight: 500 }}>Speed:</b> {stats.speed.toFixed(1)}x ({fps(stats.fps)} fps)</span>
+          <span title="Combined speed of all running jobs"><b style={{ color: "var(--mv-text)", fontWeight: 500 }}>Speed:</b> {stats.speed.toFixed(1)}x ({fps(stats.fps)} fps{stats.running > 1 ? `, ${stats.running} jobs` : ""})</span>
           {sep}
           <span><b style={{ color: "var(--mv-text)", fontWeight: 500 }}>ETA:</b> {duration(stats.eta_secs, true)}</span>
           {saved > 0 && (<>{sep}<span><b style={{ color: "var(--mv-text)", fontWeight: 500 }}>Saved:</b> {bytes(saved)}</span></>)}

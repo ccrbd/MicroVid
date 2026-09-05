@@ -22,20 +22,24 @@ export default function HelpView() {
         <P>Encodes 30 seconds from the middle of the file with the current settings and shows the real size extrapolated to the full file, the real speed, and a before/after frame comparison with a wipe slider. The measured speed also calibrates the time estimates for your machine.</P>
 
         <H>4. Start the queue</H>
-        <P>Press Start. New files you add while encoding join the queue. The status bar at the bottom shows progress for everything; click it for analytics. Pause freezes running encodes; the app keeps your computer awake while it works.</P>
+        <P>Press Start. Files you add while the queue is running are held with a “Review” badge so you can set them up first; press “Start new files” or the Start button in the file's panel when ready (Settings has a switch to start them immediately instead). The status bar at the bottom shows progress for everything; click it for analytics. Pause freezes running encodes; the app keeps your computer awake while it works.</P>
 
         <H>The recipe, explained</H>
-        <P><b>Slow preset.</b> x264 “veryslow” and x265 “slower” spend a lot of CPU searching for the best way to represent each frame. At 360p–480p this is affordable and it is where most of the quality per megabyte comes from.</P>
+        <P><b>Slow preset.</b> x264 “veryslow” and x265 “slow” spend a lot of CPU searching for the best way to represent each frame. At 360p–480p this is affordable and it is where most of the quality per megabyte comes from.</P>
         <P><b>Constant quality (CRF).</b> Instead of a fixed bitrate, CRF keeps visual quality steady and lets the size vary with the content. Lower numbers mean better quality and bigger files. The content type sets a sensible CRF: dramas need a little more, cartoons and news get away with less, action and sports need the most.</P>
         <P><b>Audio matters.</b> At these sizes audio can be a third of the file. MicroVid uses Apple's AAC encoder on macOS, which stays clean at 64–80 kb/s stereo, and downmixes 5.1 so dialogue stays clear.</P>
         <P><b>Source quality matters.</b> Encode from the best source you have. A 1080p Blu-ray rip downscaled to 480p looks far better than a 480p source re-encoded.</P>
         <P><b>Aspect ratio and cropping.</b> Black bars are detected and cropped so no bits are wasted on them, the picture is never stretched, and nothing is ever upscaled: selecting 1080p for a 720p source keeps 720p.</P>
 
         <H>Which codec?</H>
+        <P><b>Speed.</b> x265 is 3–4× slower than x264 and does not use every core at low resolutions, which is why the app runs several files at once. The status bar shows the combined speed of all running jobs. If a single file matters more than throughput, set Parallel jobs to 1, or pick x264 which is much faster per file.</P>
         <P><b>HEVC (default)</b> is roughly 40% smaller than x264 at the same quality and plays natively on Samsung TVs since 2016, Android TV, Apple TV 4K, iPhone/iPad, and Emby's web player in Safari, Edge and recent Chrome. Files are tagged so Apple devices direct-play them.</P>
         <P><b>x264</b> plays on literally everything, encodes 3–4× faster, and is the right choice for very old devices or when you want zero transcoding risk.</P>
         <P><b>AV1</b> is another 20–30% smaller than HEVC but only newer hardware decodes it (Samsung 2020+ TVs, some Android TV boxes, iPhone 15 Pro / M3 Macs and later). Emby will transcode for devices that cannot play it, which costs server CPU.</P>
         <P><b>Fast mode</b> uses your GPU's encoder (VideoToolbox, NVENC, QSV). It is many times faster but files come out 30–50% larger at the same quality. Handy for a quick draft.</P>
+
+        <H>Audio and subtitle tracks</H>
+        <P>When a file has more than one audio track or any subtitle tracks, a Tracks section appears under the settings. Tick the tracks to keep and choose which one players should pick by default. Only the tracks you keep are re-encoded, so dropping unwanted languages also saves space.</P>
 
         <H>Subtitles</H>
         <P>Files named like the video are found automatically, including language suffixes (Movie.en.srt) and Subs/ folders. Subtitles already inside the source are kept. Use the subtitle dropdown to pick a different file or search OpenSubtitles (needs an API key in Settings). Set a delay in milliseconds if they are out of sync; negative moves them earlier. Burn in only if a device cannot show soft subtitles.</P>

@@ -1,5 +1,5 @@
 //! Pure function: EncodeSettings + MediaInfo → ffmpeg argv. Unit-tested, no I/O.
-use crate::models::{Capabilities, Channels, Codec, Container, Crop, CropMode, EncodeSettings, MediaInfo, SubtitleMode};
+use crate::models::{AudioMode, AudioStream, Capabilities, Channels, Codec, Container, Crop, CropMode, EncodeSettings, MediaInfo, SubtitleMode};
 use anyhow::{anyhow, Result};
 use std::path::Path;
 
@@ -74,6 +74,22 @@ fn x264_level(h: u32, fps: f64) -> &'static str {
     }
 }
 
+/// Which audio streams end up in the output, in output order.
+pub fn select_audio<'a>(info: &'a MediaInfo, s: &EncodeSettings) -> Vec<&'a AudioStream> {
+    if info.audio.is_empty() {
+        return vec![];
+    }
+    let default_pick = || info.audio.iter().find(|x| x.is_default).or_else(|| info.audio.first()).into_iter().collect::<Vec<_>>();
+    match s.audio.mode {
+        AudioMode::All => info.audio.iter().collect(),
+        AudioMode::Select => {
+            let sel: Vec<&AudioStream> = info.audio.iter().filter(|x| s.audio.tracks.contains(&x.rel_index)).collect();
+            if sel.is_empty() { default_pick() } else { sel }
+        }
+        AudioMode::Default => default_pick(),
+    }
+}
+
 /// Dialogue-preserving stereo downmix for known surround layouts; None = let ffmpeg use `-ac 2`.
 pub fn downmix_pan(layout: Option<&str>, channels: u32) -> Option<String> {
     if channels <= 2 {
@@ -126,20 +142,10 @@ pub fn build_args(input: BuildInput) -> Result<Vec<String>> {
     }
 
     // ---- maps ----
-    push(&mut a, &["-map", "0:v:0"]);
-    let mapped_audio: Vec<&crate::models::AudioStream> = if info.audio.is_empty() {
-        vec![]
-    } else if s.audio.keep_all_tracks {
-        info.audio.iter().collect()
-    } else {
-        let pick = s
-            .audio
-            .track
-            .and_then(|t| info.audio.iter().find(|x| x.rel_index == t))
-            .or_else(|| info.audio.iter().find(|x| x.is_default))
-            .or_else(|| info.audio.first());
-        pick.into_iter().collect()
-    };
+    // Map the video stream by absolute index so embedded cover art (an attached picture that
+    // may be the first video stream) is never picked up.
+    a.extend(["-map".into(), format!("0:{}", v.index)]);
+    let mapped_audio: Vec<&AudioStream> = select_audio(info, s);
     for t in &mapped_audio {
         a.extend(["-map".into(), format!("0:a:{}", t.rel_index)]);
     }
@@ -147,14 +153,22 @@ pub fn build_args(input: BuildInput) -> Result<Vec<String>> {
     let mut sub_out_index = 0usize;
     let mut sub_codec_args: Vec<String> = vec![];
     let keep_source_subs = s.subtitles.keep_source_subs && s.subtitles.mode != SubtitleMode::None && clip.is_none();
+    // (output subtitle index, source rel index) for source tracks; external gets None.
+    let mut sub_outputs: Vec<Option<usize>> = vec![];
     if keep_source_subs {
         for st in &info.subtitles {
             if s.container == Container::Mp4 && !st.text_based {
                 continue;
             }
+            if let Some(sel) = &s.subtitles.source_tracks {
+                if !sel.contains(&st.rel_index) {
+                    continue;
+                }
+            }
             a.extend(["-map".into(), format!("0:s:{}", st.rel_index)]);
             let codec = if s.container == Container::Mp4 { "mov_text" } else { "copy" };
             sub_codec_args.extend([format!("-c:s:{sub_out_index}"), codec.into()]);
+            sub_outputs.push(Some(st.rel_index));
             sub_out_index += 1;
         }
     }
@@ -164,8 +178,19 @@ pub fn build_args(input: BuildInput) -> Result<Vec<String>> {
         a.extend(["-map".into(), "1:0".into()]);
         sub_codec_args.extend([format!("-c:s:{sub_out_index}"), sub_codec_for_ext(&ext, s.container).into()]);
         sub_codec_args.extend([format!("-metadata:s:s:{sub_out_index}"), format!("language={}", s.subtitles.language)]);
-        sub_codec_args.extend([format!("-disposition:s:{sub_out_index}"), "default".into()]);
+        sub_outputs.push(None);
         sub_out_index += 1;
+    }
+    // Default subtitle flag: explicit choice, else the external file when there is one.
+    let default_sub: Option<usize> = match s.subtitles.default_track {
+        Some(-1) => sub_outputs.iter().position(|o| o.is_none()),
+        Some(n) if n >= 0 => sub_outputs.iter().position(|o| *o == Some(n as usize)),
+        _ => sub_outputs.iter().position(|o| o.is_none()),
+    };
+    if let Some(d) = default_sub {
+        for (k, _) in sub_outputs.iter().enumerate() {
+            sub_codec_args.extend([format!("-disposition:s:{k}"), if k == d { "default".into() } else { "0".into() }]);
+        }
     }
     let _ = sub_out_index;
     if clip.is_none() {
@@ -270,6 +295,10 @@ pub fn build_args(input: BuildInput) -> Result<Vec<String>> {
         push(&mut a, &["-an"]);
     } else {
         a.extend(["-c:a".into(), caps.audio_encoder().into(), "-b:a".into(), format!("{}k", s.audio.bitrate_kbps)]);
+        let default_idx = s.audio.default_track.and_then(|d| mapped_audio.iter().position(|t| t.rel_index == d)).unwrap_or(0);
+        for n in 0..mapped_audio.len() {
+            a.extend([format!("-disposition:a:{n}"), if n == default_idx { "default".into() } else { "0".into() }]);
+        }
         match s.audio.channels {
             Channels::Mono => push(&mut a, &["-ac", "1"]),
             Channels::Stereo => {
@@ -357,15 +386,17 @@ mod tests {
         let s = EncodeSettings::default();
         let a = args(&i, &s, None, None);
         assert!(has_pair(&a, "-c:v", "libx265"));
-        assert!(has_pair(&a, "-preset", "slower"));
+        assert!(has_pair(&a, "-preset", "slow"));
         assert!(has_pair(&a, "-crf", "26"));
         assert!(has_pair(&a, "-tag:v", "hvc1"));
         assert!(has_pair(&a, "-vf", "scale=854:480:flags=lanczos,setsar=1"));
         assert!(has_pair(&a, "-c:a", "aac_at"));
         assert!(has_pair(&a, "-b:a", "80k"));
         assert!(a.iter().any(|x| x.starts_with("pan=stereo|FL<FL+0.707*FC+0.5*SL")));
+        assert!(has_pair(&a, "-map", "0:0"), "video mapped by absolute index");
         assert!(has_pair(&a, "-map", "0:s:0"));
         assert!(has_pair(&a, "-c:s:0", "copy"));
+        assert!(has_pair(&a, "-disposition:a:0", "default"));
         assert!(has_pair(&a, "-f", "matroska"));
         assert_eq!(a.last().unwrap(), "/out/x.mkv.part");
     }
@@ -477,6 +508,46 @@ mod tests {
         assert!(has_pair(&a, "-t", "30.000"));
         assert!(!has_pair(&a, "-map", "1:0"));
         assert!(!has_pair(&a, "-map", "0:s:0"));
+    }
+
+    #[test]
+    fn multiple_audio_tracks_and_default_choice() {
+        let mut i = info(1920, 1080, 1.0);
+        i.audio.push(AudioStream { index: 3, rel_index: 1, codec: "aac".into(), channels: 2, channel_layout: Some("stereo".into()), language: Some("hin".into()), title: None, bitrate: None, is_default: false });
+        i.subtitles.push(SubtitleStream { index: 4, rel_index: 1, codec: "ass".into(), language: Some("hin".into()), title: None, forced: false, is_default: false, text_based: true });
+        // keep all audio, make the second one default
+        let mut s = EncodeSettings::default();
+        s.audio.mode = AudioMode::All;
+        s.audio.default_track = Some(1);
+        let a = args(&i, &s, None, None);
+        assert!(has_pair(&a, "-map", "0:a:0") && has_pair(&a, "-map", "0:a:1"));
+        assert!(has_pair(&a, "-disposition:a:0", "0"));
+        assert!(has_pair(&a, "-disposition:a:1", "default"));
+        // select only the second audio, keep only subtitle s:1 and make it default
+        let mut s2 = EncodeSettings::default();
+        s2.audio.mode = AudioMode::Select;
+        s2.audio.tracks = vec![1];
+        s2.subtitles.source_tracks = Some(vec![1]);
+        s2.subtitles.default_track = Some(1);
+        let a2 = args(&i, &s2, None, None);
+        assert!(!has_pair(&a2, "-map", "0:a:0") && has_pair(&a2, "-map", "0:a:1"));
+        assert!(!has_pair(&a2, "-map", "0:s:0") && has_pair(&a2, "-map", "0:s:1"));
+        assert!(has_pair(&a2, "-disposition:s:0", "default"));
+        // an invalid selection falls back to the default track rather than dropping audio
+        let mut s3 = EncodeSettings::default();
+        s3.audio.mode = AudioMode::Select;
+        s3.audio.tracks = vec![9];
+        let a3 = args(&i, &s3, None, None);
+        assert!(has_pair(&a3, "-map", "0:a:0"));
+    }
+
+    #[test]
+    fn cover_art_is_not_the_video() {
+        let mut i = info(1920, 1080, 1.0);
+        i.video.as_mut().unwrap().index = 1; // stream 0 is an attached picture
+        let a = args(&i, &EncodeSettings::default(), None, None);
+        assert!(has_pair(&a, "-map", "0:1"));
+        assert!(!has_pair(&a, "-map", "0:v:0"));
     }
 
     #[test]

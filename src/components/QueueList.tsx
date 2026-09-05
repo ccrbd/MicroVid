@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUpToLine, Check, Clock, FolderOpen, Loader2, RotateCcw, Trash2, X, XCircle, SkipForward } from "lucide-react";
+import { AlertTriangle, ArrowUpToLine, Check, Clock, FolderOpen, Loader2, Play, RotateCcw, Trash2, X, XCircle, SkipForward } from "lucide-react";
 import { ipc } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { Job } from "../lib/types";
@@ -16,7 +16,7 @@ function StatusChip({ job }: { job: Job }) {
     interrupted: ["Interrupted", "var(--mv-warn-soft)", "var(--mv-warn-text)"],
     skipped: ["Skipped", "var(--mv-warn-soft)", "var(--mv-warn-text)"],
   };
-  const [label, bg, fg] = map[job.status];
+  const [label, bg, fg] = job.held && (job.status === "pending" || job.status === "probing") ? ["Review", "var(--mv-warn-soft)", "var(--mv-warn-text)"] : map[job.status];
   return <span className="mv-chip" style={{ background: bg, color: fg }}>{label}</span>;
 }
 
@@ -46,6 +46,7 @@ function meta(job: Job): string {
     case "skipped": return job.error ?? "skipped";
     case "interrupted": return `${inS} · will restart from the beginning`;
     default: {
+      if (job.held && job.info) return `${inS} → ≈ ${bytes(job.estimate?.size_bytes)} · waiting for you to review and start`;
       const sub = job.settings.subtitles.mode === "none" ? "no subs" : job.settings.subtitles.mode === "source" ? "source subs" : job.settings.subtitles.mode === "file" && job.settings.subtitles.file ? fileName(job.settings.subtitles.file) : job.auto_subtitle ? fileName(job.auto_subtitle) : job.info?.subtitles.length ? "source subs" : "no subs found";
       return `${inS} → ≈ ${bytes(job.estimate?.size_bytes)} · ≈ ${duration(job.estimate?.seconds, true)} · ${sub}`;
     }
@@ -59,6 +60,7 @@ export default function QueueList() {
   const stats = useStore((s) => s.stats);
   const finished = jobs.filter((j) => ["done", "failed", "cancelled", "skipped"].includes(j.status)).length;
   const failed = jobs.filter((j) => ["failed", "interrupted", "cancelled"].includes(j.status)).map((j) => j.id);
+  const held = jobs.filter((j) => j.held && ["pending", "probing"].includes(j.status)).map((j) => j.id);
   const totalIn = jobs.reduce((a, j) => a + j.in_size, 0);
   const totalOut = jobs.reduce((a, j) => a + (j.out_size ?? j.estimate?.size_bytes ?? 0), 0);
 
@@ -88,6 +90,11 @@ export default function QueueList() {
           {stats?.paused === false && stats.running > 0 ? "" : stats?.paused ? " · paused" : ""}
         </span>
         <span className="flex-1" />
+        {held.length > 0 && (
+          <button className="mv-btn primary" style={{ height: 24 }} onClick={() => ipc.releaseJobs(held)} title="Start the files that are waiting for review">
+            <Play size={13} /> Start {held.length} new
+          </button>
+        )}
         {failed.length > 0 && (
           <button className="mv-btn" style={{ height: 24 }} onClick={() => ipc.retryJobs(failed)} title="Re-queue failed, cancelled and interrupted jobs">
             <RotateCcw size={13} /> Retry {failed.length}
